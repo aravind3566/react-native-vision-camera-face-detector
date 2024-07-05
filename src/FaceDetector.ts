@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import {
+  CameraRuntimeError,
   VisionCameraProxy,
+  type CameraDevice,
   type Frame
 } from 'react-native-vision-camera'
 
@@ -68,6 +70,10 @@ export interface Landmarks {
   RIGHT_EYE: Point
 }
 
+type CreateFaceDetectorPluginType = {
+  cameraId: string,
+} & FaceDetectionOptions
+
 export interface FaceDetectionOptions {
   /**
    * Favor speed or accuracy when detecting faces.
@@ -130,14 +136,17 @@ export interface FaceDetectionOptions {
  * @returns {FaceDetectorPlugin} Plugin instance
  */
 function createFaceDetectorPlugin(
-  options?: FaceDetectionOptions
+  options: CreateFaceDetectorPluginType
 ): FaceDetectorPlugin {
   const plugin = VisionCameraProxy.initFrameProcessorPlugin( 'detectFaces', {
     ...options
   } )
 
   if ( !plugin ) {
-    throw new Error( 'Failed to load Frame Processor Plugin "detectFaces"!' )
+    throw new CameraRuntimeError(
+      'system/frame-processors-unavailable',
+      'Frame-processor: Failed to load Frame Processor Plugin `detectFaces`'
+    )
   }
 
   return {
@@ -159,9 +168,21 @@ function createFaceDetectorPlugin(
  * destroyed once the component using `useFaceDetector()` unmounts.
  */
 export function useFaceDetector(
+  device?: CameraDevice,
   options?: FaceDetectionOptions
 ): FaceDetectorPlugin {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if ( !device ) {
+    throw new CameraRuntimeError(
+      'device/no-device',
+      'Camera: `device` is invalid! Select a valid Camera device. See: https://mrousavy.com/react-native-vision-camera/docs/guides/devices',
+    )
+  }
+
   return useMemo( () => (
-    createFaceDetectorPlugin( options )
+    createFaceDetectorPlugin( {
+      cameraId: device.id,
+      ...options
+    } )
   ), [ options ] )
 }

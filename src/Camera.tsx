@@ -91,11 +91,14 @@ function useRunInJS(
 export const Camera = React.forwardRef( ( {
   faceDetectionOptions,
   faceDetectionCallback,
-  ...props
+  ...visionCameraProps
 }: ComponentType,
   ref: ForwardedRef<VisionCamera>
 ) => {
-  const { detectFaces } = useFaceDetector( faceDetectionOptions )
+  const { detectFaces } = useFaceDetector(
+    visionCameraProps.device,
+    faceDetectionOptions
+  )
   /** 
    * Is there an async task already running?
    */
@@ -201,7 +204,7 @@ export const Camera = React.forwardRef( ( {
   // }, [ runOnJs ] )
 
   return <VisionCamera
-    { ...props }
+    { ...visionCameraProps }
     ref={ ref }
     frameProcessor={ cameraFrameProcessor }
     pixelFormat='yuv'
