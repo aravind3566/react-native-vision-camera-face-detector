@@ -71,7 +71,10 @@ export interface Landmarks {
 }
 
 type CreateFaceDetectorPluginType = {
-  cameraId: string,
+  // current active camera ID
+  cameraId: string
+  // specifies the physical position of this camera
+  cameraPosition: string
 } & FaceDetectionOptions
 
 export interface FaceDetectionOptions {
@@ -182,6 +185,7 @@ export function useFaceDetector(
   return useMemo( () => (
     createFaceDetectorPlugin( {
       cameraId: device.id,
+      cameraPosition: device.position,
       ...options
     } )
   ), [
