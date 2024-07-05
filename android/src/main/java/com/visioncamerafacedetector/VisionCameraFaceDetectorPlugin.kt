@@ -1,7 +1,17 @@
 package com.visioncamerafacedetector
 
+import android.content.Context.CAMERA_SERVICE
 import android.graphics.Rect
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.os.Build
+import android.os.Build.VERSION.SDK_INT
 import android.util.Log
+import android.util.SparseIntArray
+import android.view.Surface
+import androidx.annotation.RequiresApi
+import com.facebook.react.bridge.ReactApplicationContext
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -17,12 +27,15 @@ import com.mrousavy.camera.frameprocessors.FrameProcessorPlugin
 import com.mrousavy.camera.frameprocessors.VisionCameraProxy
 
 private const val TAG = "FaceDetector"
+private val ORIENTATIONS = SparseIntArray()
 class VisionCameraFaceDetectorPlugin(
   proxy: VisionCameraProxy,
   options: Map<String, Any>?
 ) : FrameProcessorPlugin() {
   // device display data
-  private val displayMetrics = proxy.context.resources.displayMetrics
+  private val context = proxy.context
+  private val displayMetrics = context.resources.displayMetrics
+  private val testOrientation = context.resources.configuration.orientation
   private val density = displayMetrics.density
   private val windowWidth = (displayMetrics.widthPixels).toDouble() / density
   private val windowHeight = (displayMetrics.heightPixels).toDouble() / density
@@ -34,8 +47,19 @@ class VisionCameraFaceDetectorPlugin(
   private var runClassifications = false
   private var runContours = false
   private var trackingEnabled = false
+  private var cameraId: String
+  private var cameraPosition: String
 
   init {
+    ORIENTATIONS.append(Surface.ROTATION_0, 0)
+    ORIENTATIONS.append(Surface.ROTATION_90, 90)
+    ORIENTATIONS.append(Surface.ROTATION_180, 180)
+    ORIENTATIONS.append(Surface.ROTATION_270, 270)
+
+    // store current active cameraID
+    cameraId = options?.get("cameraId").toString()
+    // is using front or back camera
+    cameraPosition = options?.get("cameraPosition").toString()
     // handle auto scaling
     autoScale = options?.get("autoScale").toString() == "true"
 
@@ -254,6 +278,37 @@ class VisionCameraFaceDetectorPlugin(
     return faceContoursTypesMap
   }
 
+  private fun getRotationCompensation(): Int {
+    val facingFront = cameraPosition === "front"
+    // Get the device's current rotation relative to its "native" orientation.
+    // Then, from the ORIENTATIONS table, look up the angle the image must be
+    // rotated to compensate for the device's rotation.
+    val activity = context.currentActivity!!
+    val deviceRotation:Int
+
+    if( SDK_INT < Build.VERSION_CODES.R) {
+      Log.d(TAG, "activity ${activity.windowManager.defaultDisplay.rotation}")
+      deviceRotation = activity.windowManager.defaultDisplay.rotation
+    } else {
+      Log.d(TAG, "activity ${activity.windowManager.defaultDisplay.rotation} display ${activity.display?.rotation}")
+      deviceRotation = activity.display?.rotation ?: 0
+    }
+    val compensation = ORIENTATIONS.get(deviceRotation)
+
+    // Get the device's sensor orientation.
+    val cameraManager = activity.getSystemService(CAMERA_SERVICE) as CameraManager
+    val sensorOrientation = cameraManager
+      .getCameraCharacteristics(cameraId)
+      .get(CameraCharacteristics.SENSOR_ORIENTATION)!!
+
+    Log.d(TAG, "deviceRotation $deviceRotation sensorOrientation $sensorOrientation")
+    return if (facingFront) {
+      (sensorOrientation + compensation) % 360
+    } else { // back-facing
+      (sensorOrientation - compensation + 360) % 360
+    }
+  }
+
   private fun getOrientation(
     orientation: Orientation
   ): Int {
@@ -277,6 +332,9 @@ class VisionCameraFaceDetectorPlugin(
     
     try {
       val orientation = getOrientation(frame.orientation)
+      val test = getRotationCompensation()
+      Log.d(TAG, "frame orientation: ${frame.orientation} - calc orientation: $orientation - new method: $test - context orientation: $testOrientation")
+
       val image = InputImage.fromMediaImage(frame.image, orientation)
       // we need to invert sizes as frame is always -90deg rotated
       val width = image.height.toDouble()
