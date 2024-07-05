@@ -184,5 +184,8 @@ export function useFaceDetector(
       cameraId: device.id,
       ...options
     } )
-  ), [ options ] )
+  ), [
+    options,
+    device
+  ] )
 }
